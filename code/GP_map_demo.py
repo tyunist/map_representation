@@ -43,67 +43,98 @@ def simple_grid(data, fname, resolution=0.1):
   plt.show()
  
 def generate_GP_map(model, resolution, limits, fname, verbose=True, percent_map=100):
-    """Generates a grid map by querying the model at cell locations.
+	"""Generates a grid map by querying the model at cell locations.
 
-    :param model the hilbert map model to use
-    :param resolution the resolution of the produced grid map
-    :param limits the limits of the grid map
-    :param fname the name of the file in which to store the final grid map
-    :param verbose print progress if True
-    """
-    # Determine query point locations
-    x_count = int(math.ceil((limits[1] - limits[0]) / resolution))
-    y_count = int(math.ceil((limits[3] - limits[2]) / resolution))
-    sample_coords = []
-    for x in range(x_count):
-        for y in range(y_count):
-            sample_coords.append((limits[0] + x*resolution, limits[2] + y*resolution))
+	:param model the hilbert map model to use
+	:param resolution the resolution of the produced grid map
+	:param limits the limits of the grid map
+	:param fname the name of the file in which to store the final grid map
+	:param verbose print progress if True
+	"""
+	# Determine query point locations
+	x_count = int(math.ceil((limits[1] - limits[0]) / resolution))
+	y_count = int(math.ceil((limits[3] - limits[2]) / resolution))
+	sample_coords = []
+	for x in range(x_count):
+	    for y in range(y_count):
+	        sample_coords.append((limits[0] + x*resolution, limits[2] + y*resolution))
 
-    # Obtain predictions in a batch fashion
-    predictions = []
-    offset = 0
-    batch_size = 1000
-    # pdb.set_trace()
+	# Obtain predictions in a batch fashion
+	predictions = []
+	offset = 0
+	batch_size = 1000
+	# pdb.set_trace()
 
-    # Query the model 
-    L_xx = model['L']
-    Xtrain = model['X']
-    sigma = model['sigma']
-    v0 = model['v0']
-    ytrain = model['y']
- 
-    while offset < len(sample_coords):
-			Xtest = sample_coords[offset:offset+batch_size] 
-			K_ss = GP_map.rbf_kernel_D_vectorized(np.matrix(Xtest), np.matrix(Xtest), sigma, v0)
-			K_xs = GP_map.rbf_kernel_D_vectorized(np.matrix(Xtrain), np.matrix(Xtest), sigma, v0)
-			L_xs = np.linalg.solve(L_xx, K_xs)
-			mu_test = np.dot(L_xs.T, np.linalg.solve(L_xx, ytrain)).reshape((batch_size,))
+	# Query the model 
+	L_xx = model['L']
+	Xtrain = model['X']
+	sigma = model['sigma']
+	v0 = model['v0']
+	ytrain = model['y']
 
-			predictions.extend(mu_test)
 
-			# s2 = np.diag(K_ss) - np.sum(L_xs**2, axis=0)
-			# stdv = np.sqrt(s2)
+	batch_size = Xtrain.shape[0]
+	# recompute x_count, y_count 
+	limits = [np.min(Xtrain[:,0]), np.max(Xtrain[:,0]), np.min(Xtrain[:,1]), np.max(Xtrain[:,1])]
+	x_count = int(math.ceil((limits[1] - limits[0]) / resolution))
+	y_count = int(math.ceil((limits[3] - limits[2]) / resolution))
+	# 
 
-			if verbose:
-			    sys.stdout.write("\rQuerying model: {: 6.2f}%".format(offset / float(len(sample_coords)) * 100))
-			    sys.stdout.flush()
-			offset += batch_size
-    if verbose:
-        print("")
-    predictions = np.array(predictions)
-  
+	# Test by reconstructing Xtrain 
+	Xtest = Xtrain
+	# K_ss = GP_map.rbf_kernel_D_vectorized(np.matrix(Xtest), np.matrix(Xtest), sigma, v0)
+	# K_xs = GP_map.rbf_kernel_D_vectorized(np.matrix(Xtrain), np.matrix(Xtest), sigma, v0)
+	# L_xs = np.linalg.solve(L_xx, K_xs)
+	# mu_test = np.dot(L_xs.T, np.linalg.solve(L_xx, ytrain)).reshape((batch_size,))
 
-    # Turn predictions into a matrix for visualization
-    mat = predictions.reshape(x_count, y_count)
-    plt.clf()
-    plt.title("Occupancy map %d %%"%percent_map)
-    plt.imshow(mat.transpose()[::-1, :])
-    plt.colorbar()
-    plt.savefig(fname)
-    plt.show()
-    plt.pause(0.05)
+	mu_test = np.dot(L_xx.T, np.linalg.solve(L_xx, ytrain)).reshape((batch_size,))
+	predictions = mu_test 
 
-def train_GP(data, components, sigma, v0, distance_cutoff, map_resolution=None, online_map=False, max_iter=1):
+	#  while offset < len(sample_coords):
+		# Xtest = sample_coords[offset:offset+batch_size] 
+		# K_ss = GP_map.rbf_kernel_D_vectorized(np.matrix(Xtest), np.matrix(Xtest), sigma, v0)
+		# K_xs = GP_map.rbf_kernel_D_vectorized(np.matrix(Xtrain), np.matrix(Xtest), sigma, v0)
+		# L_xs = np.linalg.solve(L_xx, K_xs)
+		# mu_test = np.dot(L_xs.T, np.linalg.solve(L_xx, ytrain)).reshape((batch_size,))
+
+		# predictions.extend(mu_test)
+
+		# # s2 = np.diag(K_ss) - np.sum(L_xs**2, axis=0)
+		# # stdv = np.sqrt(s2)
+
+		# if verbose:
+		#     sys.stdout.write("\rQuerying model: {: 6.2f}%".format(offset / float(len(sample_coords)) * 100))
+		#     sys.stdout.flush()
+		# offset += batch_size
+	#  if verbose:
+	#      print("")
+	#  predictions = np.array(predictions)
+
+
+	# Project into grid map 
+	map = np.zeros([y_count, x_count]) 
+	for i in range(batch_size):
+		x = int((Xtrain[i][0] - limits[0])/(limits[1] - limits[0])*(x_count-1))
+		y = int((Xtrain[i][1] - limits[2])/(limits[3] - limits[2])*(y_count-1))
+		map[y, x] = predictions[i]
+		print '<x, y>:', x, y, 'limit:', x_count, y_count, 'pred:',predictions[i] 
+
+	plt.imshow(map, cmap='gray')
+	plt.title('GP Occupancy Map,' + fname.split('.')[0]) 
+	plt.savefig(fname)
+	plt.show()
+
+	# # Turn predictions into a matrix for visualization
+	# mat = predictions.reshape(x_count, y_count)
+	# plt.clf()
+	# plt.title("Occupancy map %d %%"%percent_map)
+	# plt.imshow(mat.transpose()[::-1, :])
+	# plt.colorbar()
+	# plt.savefig(fname)
+	# plt.show()
+	# plt.pause(0.05)
+
+def train_GP(data, components, sigma, v0, distance_cutoff, map_resolution=None, online_map=False, max_iter=None):
   """Trains a GP map model  
 
   :param data the dataset to train on
@@ -154,6 +185,8 @@ def train_GP(data, components, sigma, v0, distance_cutoff, map_resolution=None, 
     sys.stdout.write("\rTraining model:{: 6.2f}%".format(percent_map))
     sys.stdout.flush()
     count += 1 
+    if not max_iter:
+    	continue 
     if n_iter >= max_iter:
     	break 
 
