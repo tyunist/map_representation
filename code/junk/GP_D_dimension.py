@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D 
  
 # Test data 
-n = 15 
+n = 50
 
-xarray = np.linspace(-5 - n,5 + n,n)
-yarray = np.linspace(-5 - n,5 + n,n)
+xarray = np.linspace(-6 ,6 ,n)
+yarray = np.linspace(-6 ,6 ,n)
 n *= n 
 xarray, yarray = np.meshgrid(xarray, yarray)
 # xarray = xarray.flatten()
@@ -37,7 +37,7 @@ def rbf_kernel_D_vectorized(mat1, mat2, sigma):
 	return np.array(np.exp(k)) 
 
 
-sigma =  1
+sigma =  1.4
 
  
 K_ss = rbf_kernel_D_vectorized(np.matrix(Xtest), np.matrix(Xtest), sigma)
@@ -47,7 +47,7 @@ print '--shape K_ss:', K_ss.shape
 
 # Get cholesky decomposition (square root) of the
 # covariance matrix
-L = np.linalg.cholesky(K_ss + 1e-15*np.eye(n)) 
+L = np.linalg.cholesky(K_ss + 1e-5*np.eye(n)) 
 
 # Sample 3 sets of standard normals for our test points,
 # multiply them by the square root of the covariance matrix
@@ -65,17 +65,29 @@ f_prior = np.dot(L, np.random.normal(size=(n,3)))
 #                        linewidth=0, antialiased=False)
 # plt.show()
 
-def fun(x, y):
-  return np.sin(x) + 0*np.abs(y)
+# def fun(x, y):
+#   return np.exp()  #0*np.abs(y)
 
-Ntrain = 10 
-xarray_train = np.linspace(-3 - Ntrain,3 + Ntrain, Ntrain)
-yarray_train = np.linspace(-3 - Ntrain,3 + Ntrain, Ntrain)
+def fun(X):
+	# X input = N x D where N is number of data
+	# pdb.set_trace()
+	assert isinstance(X, np.ndarray)
+	if len(X.shape) < 2: 
+		X = np.expand_dims(X, 0)
+	sigma = np.eye(X.shape[1])
+	mean = np.ones(X.shape[1])
+	epsilon = 20
+	return np.array([2*np.exp(-1./(2*epsilon**2)*np.dot(np.dot(np.reshape(v-mean, [1, -1]), \
+	            sigma), np.reshape(v-mean, [1, -1]).T) )[0,0] for v in X])
+Ntrain = 50 
+xarray_train = np.linspace(-3,3, Ntrain)
+yarray_train = np.linspace(-3, 3 , Ntrain)
  
 xarray_train, yarray_train = np.meshgrid(xarray_train, yarray_train)
-ytrain  = np.array([fun(x ,y ) for x, y in zip(np.ravel(xarray_train), np.ravel(yarray_train))])
+# ytrain  = np.array([fun(x ,y ) for x, y in zip(np.ravel(xarray_train), np.ravel(yarray_train))])
 # Noiseless training data
 Xtrain = np.vstack([xarray_train.flatten() , yarray_train.flatten() ]).T
+ytrain = fun(Xtrain)
  
 
 # Apply the kernel function to our training points
@@ -102,13 +114,17 @@ stdv = np.sqrt(s2)
 # Draw samples from the posterior at our test points.
 # Output covariance:
 # K_ss - np.dot(Lk.T, Lk)
-L = np.linalg.cholesky(K_ss + 1e-6*np.eye(n) - np.dot(Lk.T, Lk))
-f_post = mu.reshape(-1,1) + np.dot(L, np.random.normal(size=(n,3)))
+# L = np.linalg.cholesky(K_ss + 1e-6*np.eye(n) - np.dot(Lk.T, Lk))
+# f_post = mu.reshape(-1,1) + np.dot(L, np.random.normal(size=(n,3)))
 
 
 # Compute error 
-ytest_gt  = np.array([fun(x ,y ) for x, y in zip(np.ravel(xarray), np.ravel(yarray))])
+# ytest_gt  = np.array([fun(x ,y ) for x, y in zip(np.ravel(xarray), np.ravel(yarray))])
+ytest_gt = fun(Xtest)
 RMSE_test = np.mean((ytest_gt-mu)**2)
+
+print '>> Gt:', ytest_gt 
+print '>> Pred:', mu 
 print '>> Resule RMSE: %.4f'%RMSE_test 
 # Visualize training and testing data 
 fig = plt.figure(figsize=(12, 6))
@@ -116,7 +132,7 @@ ax = fig.add_subplot(121, projection='3d')
 zarray = ytrain  
 zarray = zarray.reshape(xarray_train.shape)
 surf = ax.plot_surface(xarray_train, yarray_train, zarray ,
-                       linewidth=0, antialiased=False)
+                       linewidth=0, antialiased=False, cmap='cool')
 ax.set_title('Training') 
 
 
@@ -126,9 +142,11 @@ ax.set_title('Testing, RMSE = %.3f'%RMSE_test)
 
 zarray = mu 
 zarray = zarray.reshape(xarray.shape)
-surf = ax.plot_surface(xarray, yarray, zarray , linewidth=0, antialiased=False, label='Pred', color=(0.9, 0.3,0.3)) #, cmap='CMRmap')
+surf = ax.plot_surface(xarray, yarray, zarray , linewidth=0, antialiased=False, label='Pred', color=(0.9, 0.3,0.3) ) #, cmap='cool')
+# p3d = ax.scatter(xarray, yarray, zarray ,  label='Pred', color=(0.9, 0.3,0.3)) #, cmap='CMRmap')
  
 zarray = ytest_gt.reshape(xarray.shape)
-surf = ax.plot_surface(xarray, yarray, zarray , linewidth=0, antialiased=False, color=(0.3, 0.9, 0.7), label='Gt') #, cmap='cool')
+surf = ax.plot_surface(xarray, yarray, zarray , linewidth=0, antialiased=False, color=(0.3, 0.9, 0.7), label='Gt' , cmap='cool')
+# surf = ax.scatter(xarray, yarray, zarray , color=(0.3, 0.9, 0.7), label='Gt') #, cmap='cool')
  
 plt.show()
